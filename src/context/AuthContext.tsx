@@ -1,4 +1,7 @@
-import { createContext, ReactNode } from "react";
+import { createContext, ReactNode, useEffect, useState } from "react";
+import { api } from "../services/api";
+import Router from "next/router";
+import { setCookie, parseCookies } from "nookies";
 
 //criar tipagem
 
@@ -8,7 +11,8 @@ type SignInCredentials = {
 };
 
 type AuthContextData = {
-  signIn(credentials: SignInCredentials): Promise<void>; // void sem retorno
+  signIn(credentials: SignInCredentials): Promise<void>; // void função sem retorno
+  user: User;
   isAuthenticated: boolean; // verificar se o usuário está autenticado
 };
 
@@ -16,20 +20,67 @@ type AuthProviderProps = {
   children: ReactNode;
 };
 
+type User = {
+  email: string;
+  permissions: string[];
+  roles: string[];
+};
+
 //context
 export const AuthContext = createContext({} as AuthContextData);
 
 //Provider
 export function AuthProvider({ children }: AuthProviderProps) {
-  const isAuthenticated = false;
+  const [user, setUser] = useState<User>(null);
+  const isAuthenticated = !!user;
+
+  useEffect(() => {
+    const { "nextauth.token": token } = parseCookies();
+
+    if (token) {
+      api.get("/me").then((response) => {
+        const { email, permissions, roles } = response.data;
+
+        setUser({ email, permissions, roles });
+      });
+    }
+  }, []);
 
   // async devido Promise<void>
   async function signIn({ email, password }: SignInCredentials) {
-    console.log(email, password);
+    try {
+      const response = await api.post("sessions", {
+        email,
+        password,
+      });
+
+      const { permissions, roles, token, refreshToken } = response.data;
+
+      setCookie(undefined, "nextauth.token", token, {
+        maxAge: 60 * 60 * 24 * 30, //30 dias
+        path: "/", // acesso a qualquer rota da aplicação
+      });
+      setCookie(undefined, "nextauth.refreshToken", refreshToken, {
+        maxAge: 60 * 60 * 24 * 30, //30 dias
+        path: "/", // acesso a qualquer rota da aplicação
+      });
+
+      setUser({
+        email,
+        permissions,
+        roles,
+      });
+
+      api.defaults.headers["Authorization"] = `Bearer ${token}`;
+
+      Router.push("/dashboard");
+    } catch (error) {
+      console.log(error);
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ signIn, isAuthenticated }}>
+    <AuthContext.Provider value={{ signIn, isAuthenticated, user }}>
       {children}
     </AuthContext.Provider>
   );
