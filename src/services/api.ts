@@ -2,6 +2,7 @@ import axios, { AxiosError } from "axios";
 
 import { parseCookies, setCookie } from "nookies";
 import { signOut } from "../context/AuthContext";
+import { AuthTokenError } from "./errors/authTokenError";
 
 let isRefreshingToken = false;
 let failedRequestQueue = [];
@@ -30,7 +31,7 @@ export function setupAPIClient(ctx = undefined) {
 
           if (!isRefreshingToken) {
             isRefreshingToken = true;
-            console.log("refresh");
+            // console.log("refresh");
             api
               .post("/refresh", {
                 refreshToken,
@@ -86,6 +87,8 @@ export function setupAPIClient(ctx = undefined) {
           // deslogar o usuário
           if (process.browser) {
             signOut();
+          } else {
+            return Promise.reject(new AuthTokenError());
           }
         }
       }
